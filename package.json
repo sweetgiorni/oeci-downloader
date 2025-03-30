@@ -1,0 +1,60 @@
+{
+  "name": "oeci-downloader",
+  "version": "1.0.0",
+  "description": "",
+  "main": "userscripts/index.user.js",
+  "scripts": {
+    "preinstall": "npx only-allow pnpm",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack --config webpack/prod.ts",
+    "dev": "webpack --config webpack/dev.ts",
+    "build:watch": "webpack --watch --config webpack/dev.ts"
+  },
+  "keywords": [],
+  "author": "Alex Sweet",
+  "packageManager": "pnpm@10.6.1",
+  "devDependencies": {
+    "@types/mime": "3.0.0",
+    "@types/file-saver": "^2.0.7",
+    "@types/jquery": "^3.5.32",
+    "@types/tampermonkey": "^5.0.4",
+    "@types/webpack": "^5.28.5",
+    "@types/wicg-file-system-access": "^2023.10.5",
+    "terser-webpack-plugin": "^5.3.14",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2",
+    "webpack": "^5.98.0",
+    "webpack-cli": "^6.0.1",
+    "webpack-merge": "^6.0.1"
+  },
+  "userscript": {
+    "require-template": "https://cdn.jsdelivr.net/npm/${dependencyName}@${dependencyVersion}",
+    "namespace": "https://github.com/sweetgiorni",
+    "license": "https://opensource.org/licenses/MIT",
+    "match": [
+      "https://publicaccess.courts.oregon.gov/*CaseDocuments.aspx"
+    ],
+    "require": [
+      "https://code.jquery.com/jquery-3.6.0.min.js"
+    ],
+    "grant": [
+      "GM.xmlHttpRequest",
+      "GM_download",
+      "GM_addStyle"
+    ],
+    "connect": [
+      "https://publicaccess.courts.oregon.gov"
+    ],
+    "exclude": [],
+    "resources": [],
+    "keyedResources": {}
+  },
+  "dependencies": {
+    "@trim21/gm-fetch": "^0.2.4",
+    "axios": "^1.8.2",
+    "file-saver": "^2.0.5",
+    "jszip": "3.9.1",
+    "mime": "3.0.0"
+  }
+}
