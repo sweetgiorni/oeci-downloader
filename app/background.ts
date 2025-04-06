@@ -1,7 +1,7 @@
-// eslint-disable-next-line import/no-unassigned-import
-import './options-storage';
 import sanitize from 'sanitize-filename';
-import mime from 'mime';
+import { DownloadFileRequest, Message, GetCaseDocumentsURLResponse, Image } from './common';
+
+type SendResponse = (response?: unknown) => void;
 
 async function downloadFile(
     caseNumber: string,
@@ -9,6 +9,7 @@ async function downloadFile(
     event: string,
     image: Image,
     useSubdirectory: boolean,
+    rootDir: string,
 ) {
     // TODO: revisit if I want to make subdirectories optional.
     // Windows seems to group by file type by default, so it screws
@@ -20,7 +21,6 @@ async function downloadFile(
     console.log(`Downloading ${image.url}`)
 
 
-    const rootDir = `oesi-cases/${caseNumber}-${personName}`;
 
     // If there is only one file associated with the event, don't bother creating a new directory.
     // Otherwise, 
@@ -34,17 +34,26 @@ async function downloadFile(
     console.log(` to ${filename}`);
 
 
-    await browser.downloads.download({
+    const downloadID = await browser.downloads.download({
         url: image.url,
         filename: filename,
-        conflictAction: 'uniquify',
+        conflictAction: 'overwrite',
         saveAs: false,
     })
+    const onDownloadChanged = (delta: browser.downloads._OnChangedDownloadDelta) => {
+        if (delta.id === downloadID && delta.state && delta.state.current === 'complete') {
+            console.debug('Download complete:', delta);
+            browser.downloads.erase({ id: downloadID });
+            // Remove the listener to avoid memory leaks
+            browser.downloads.onChanged.removeListener(onDownloadChanged);
+        }
+    };
+    browser.downloads.onChanged.addListener(onDownloadChanged);
     return true;
 
 }
 
-function handleDownloadImagesMessage(message: DownloadFileRequest, sender: any, sendResponse: any) {
+function handleDownloadImagesMessage(message: DownloadFileRequest, sender: browser.runtime.MessageSender, sendResponse: SendResponse) {
     console.debug('Handling download file message');
 
     downloadFile(
@@ -52,7 +61,8 @@ function handleDownloadImagesMessage(message: DownloadFileRequest, sender: any, 
         message.personName,
         message.event,
         message.image,
-        message.useSubdirectory
+        message.useSubdirectory,
+        message.rootDir,
     ).then((result) => {
         console.debug('Download file result:', result);
         sendResponse({ success: result });
@@ -66,9 +76,9 @@ function handleDownloadImagesMessage(message: DownloadFileRequest, sender: any, 
 
 
 // Event listener
-async function handleMessages(message: Message | any, sender: any, sendResponse: any) {
+async function handleMessages(message: Message | object, sender: browser.runtime.MessageSender, sendResponse: SendResponse) {
     console.debug('Received message');
-    if (message.type === 'download-file') {
+    if ('type' in message && message.type === 'download-file') {
         return handleDownloadImagesMessage(message as DownloadFileRequest, sender, sendResponse);
     }
 
@@ -77,3 +87,56 @@ async function handleMessages(message: Message | any, sender: any, sendResponse:
 }
 
 browser.runtime.onMessage.addListener(handleMessages);
+
+browser.action.onClicked.addListener(async (tab) => {
+    // Make sure we're on the CaseDocuments page
+
+    if (tab.url?.includes('CaseDetail.aspx')) {
+        console.debug('Navigating to CaseDocuments page');
+        // Send an event to the content script to have it navigate to the CaseDocuments page
+        const result: GetCaseDocumentsURLResponse = await browser.tabs.sendMessage(tab.id!, {
+            type: 'get-case-documents-url',
+        });
+        if (!result.success) {
+            console.error('Failed to get case documents URL');
+            return;
+        }
+        // Wait for the tab to load
+        tab = await new Promise<browser.tabs.Tab>((resolve) => {
+            const checkTab = (tabId: number, changeInfo: browser.tabs._OnUpdatedChangeInfo, updatedTab: browser.tabs.Tab) => {
+                if (changeInfo.status === 'complete') {
+                    browser.tabs.onUpdated.removeListener(checkTab);
+                    resolve(updatedTab);
+                }
+            };
+            browser.tabs.onUpdated.addListener(checkTab);
+            browser.tabs.update(tab.id!, {
+                url: result.url,
+            });
+        }
+        );
+        console.debug('Navigated to CaseDocuments page');
+    }
+    if (!tab.url?.includes('CaseDocuments.aspx')) return;
+    const response: { success: boolean, rootDir?: string, error?: unknown } = await browser.tabs.sendMessage(tab.id!, {
+        type: 'scrape-and-download',
+    });
+    if (!response.success) {
+        console.error('Failed to scrape and download:', response.error);
+        return;
+    }
+    console.log(`Scrape and download completed successfully to ${response.rootDir}`);
+    // Open the folder in the file explorer. Since we have to refer to a specific downloaded
+    // file, create a dummy file in the directory and open it.
+    const dummyFile = `${response.rootDir}/empty`;
+    const blob = new Blob([], { type: "text/plain" })
+    const downloadId = await browser.downloads.download({
+        url: URL.createObjectURL(blob),
+        filename: dummyFile,
+        conflictAction: 'overwrite',
+        saveAs: false,
+    });
+    console.debug(`Opening folder ${response.rootDir}`);
+    await browser.downloads.show(downloadId);
+    await browser.downloads.erase({ id: downloadId });
+});

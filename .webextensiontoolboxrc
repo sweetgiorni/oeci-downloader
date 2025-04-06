@@ -5,4 +5,4 @@ manifestValidation: true
 autoReload: true
 port: "35729"
 devServer: false
-config: webextension-toolbox-config.js
+config: webextension-toolbox-config.cjs

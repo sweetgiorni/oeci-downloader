@@ -21,6 +21,9 @@
 	"host_permissions": [
 		"https://publicaccess.courts.oregon.gov/*"
 	],
+	"action": {
+		"default_title": "Download case documents"
+	},
 	"content_scripts": [
 		{
 			"matches": [
@@ -33,12 +36,6 @@
 			"run_at": "document_end"
 		}
 	],
-	"action": {
-		"default_popup": "popup.html"
-	},
-	"options_ui": {
-		"page": "options.html"
-	},
 	"background": {
 		"service_worker": "background.js",
 		"type": "module",

@@ -1,22 +1,32 @@
 
-interface Message {
+export interface Message {
 	type: string;
 }
 
-interface DownloadFileRequest extends Message {
+export interface DownloadFileRequest extends Message {
 	type: 'download-file';
 	personName: string;
 	caseNumber: string;
 	event: string;
 	image: Image;
 	useSubdirectory: boolean;
+	rootDir: string;
 }
 
-interface ScrapeAndDownloadRequest extends Message {
+export interface ScrapeAndDownloadRequest extends Message {
 	type: 'scrape-and-download';
 }
 
-interface Image {
+export interface GetCaseDocumentsURL extends Message {
+	type: 'get-case-documents-url';
+}
+
+export interface GetCaseDocumentsURLResponse extends Message {
+	success: boolean;
+	url?: string;
+}
+
+export interface Image {
 	// The name of the event, e.g "12/12/2012 Report - Guardian".
 	// Multiple images can be associated with the same event.
 	event: string;
