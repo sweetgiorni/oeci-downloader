@@ -5,7 +5,7 @@ const optionsStorage = new OptionsSync({
 		colorRed: 244,
 		colorGreen: 67,
 		colorBlue: 54,
-		text: 'Set a text!',
+		text: 'Set a texty!',
 	},
 	migrations: [
 		OptionsSync.migrations.removeUnused,

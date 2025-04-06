@@ -1,0 +1,8 @@
+src: app
+target: dist/[vendor]
+devtool: cheap-source-map
+manifestValidation: true
+autoReload: true
+port: "35729"
+devServer: false
+config: webextension-toolbox-config.js

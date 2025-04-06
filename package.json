@@ -7,11 +7,14 @@
 		"lint:css": "stylelint source/**/*.css",
 		"lint:js": "xo",
 		"test": "run-p lint:* build",
-		"watch": "NODE_NO_WARNINGS=1 parcel watch --no-hmr"
+		"watch": "parcel watch --no-hmr --host localhost"
 	},
 	"browserslist": [
 		"last 1 Chrome version",
 		"last 1 Firefox version"
+	],
+	"files": [
+		"app"
 	],
 	"xo": {
 		"envs": [
@@ -29,17 +32,22 @@
 		"rules": {}
 	},
 	"dependencies": {
-		"webext-base-css": "^2.0.1",
-		"webext-options-sync": "^4.2.3"
+		"mime": "^4.0.7",
+		"preact": "^10.26.5",
+		"sanitize-filename": "^1.6.3",
+		"webext-base-css": "^2.1.0",
+		"webext-options-sync": "^4.3.0"
 	},
 	"devDependencies": {
-		"@parcel/config-webextension": "^2.13.0",
-		"@parcel/resolver-default": "^2.13.0",
-		"npm-run-all2": "^7.0.1",
-		"parcel": "^2.13.0",
-		"stylelint": "^16.6.1",
+		"@types/chrome": "^0.0.313",
+		"@types/firefox-webext-browser": "^120.0.4",
+		"npm-run-all2": "^7.0.2",
+		"stylelint": "^16.17.0",
 		"stylelint-config-prettier": "^9.0.5",
 		"stylelint-config-xo": "^1.0.2",
+		"ts-loader": "^9.5.2",
+		"tslint-loader": "^3.5.4",
+		"typescript": "^5.8.3",
 		"xo": "^0.59.3"
 	},
 	"@parcel/resolver-default": {
