@@ -7,7 +7,7 @@
 	"minimum_chrome_version": "121",
 	"browser_specific_settings": {
 		"gecko": {
-			"id": "oeci-downloader@sweetgiorni.github.io",
+			"id": "oeci-downloader@sweetgiorni",
 			"strict_min_version": "109.0"
 		}
 	},
