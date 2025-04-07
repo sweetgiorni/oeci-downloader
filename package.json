@@ -60,7 +60,7 @@
 		"sourceDir": "distribution",
 		"run": {
 			"startUrl": [
-				"https://github.com/fregante/browser-extension-template"
+				"https://github.com/sweetgiorni/oeci-downloader"
 			]
 		}
 	}

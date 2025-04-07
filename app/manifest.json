@@ -2,12 +2,12 @@
 	"name": "OESI Downloader",
 	"version": "0.0.0",
 	"description": "Download Oregon court documents",
-	"homepage_url": "https://github.com/",
+	"homepage_url": "https://github.com/sweetgiorni/oeci-downloader",
 	"manifest_version": 3,
 	"minimum_chrome_version": "121",
 	"browser_specific_settings": {
 		"gecko": {
-			"id": "eosi-downloader@sweetgiorni.github.io",
+			"id": "oeci-downloader@sweetgiorni.github.io",
 			"strict_min_version": "109.0"
 		}
 	},
