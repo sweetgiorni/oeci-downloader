@@ -12,7 +12,6 @@
 		}
 	},
 	"permissions": [
-		"storage",
 		"downloads"
 	],
 	"host_permissions": [
