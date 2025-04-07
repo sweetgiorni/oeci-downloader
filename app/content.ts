@@ -42,7 +42,7 @@ async function scrapeAndDownload(): Promise<string> {
 		throw "Couldn't find case number span.";
 	}
 	const caseNumber = caseNoSpan.textContent ?? "UnknownCaseNumber";
-	const rootDir = `oesi-cases/${caseNumber}-${personName}`;
+	const rootDir = `oeci-cases/${caseNumber}-${personName}`;
 	let lastEventName = "";
 	// This forEach needs to run synchronously because of the use of the lastEventName variable.
 	document.querySelectorAll<HTMLTableRowElement>("table:has(th) tr:has(:not(th)").forEach((v) => {
