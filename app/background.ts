@@ -1,6 +1,8 @@
 import sanitize from 'sanitize-filename';
 import { DownloadFileRequest, Message, GetCaseDocumentsURLResponse, Image } from './common';
 
+declare const VENDOR: 'firefox' | 'chrome';
+
 type SendResponse = (response?: unknown) => void;
 
 async function downloadFile(
@@ -42,7 +44,6 @@ async function downloadFile(
     })
     const onDownloadChanged = (delta: browser.downloads._OnChangedDownloadDelta) => {
         if (delta.id === downloadID && delta.state && delta.state.current === 'complete') {
-            console.debug('Download complete:', delta);
             browser.downloads.erase({ id: downloadID });
             // Remove the listener to avoid memory leaks
             browser.downloads.onChanged.removeListener(onDownloadChanged);
@@ -88,6 +89,20 @@ async function handleMessages(message: Message | object, sender: browser.runtime
 
 browser.runtime.onMessage.addListener(handleMessages);
 
+const waitForDownload = (downloadId: number) => {
+    return new Promise<boolean>((resolve) => {
+        const onDownloadChanged = (delta: browser.downloads._OnChangedDownloadDelta) => {
+            if (delta.id === downloadId && delta.state && delta.state.current === 'complete') {
+                console.debug('Download complete:', delta);
+                // Remove the listener to avoid memory leaks
+                browser.downloads.onChanged.removeListener(onDownloadChanged);
+                resolve(true);
+            }
+        };
+        browser.downloads.onChanged.addListener(onDownloadChanged);
+    });
+};
+
 browser.action.onClicked.addListener(async (tab) => {
     // Make sure we're on the CaseDocuments page
 
@@ -128,14 +143,25 @@ browser.action.onClicked.addListener(async (tab) => {
     console.log(`Scrape and download completed successfully to ${response.rootDir}`);
     // Open the folder in the file explorer. Since we have to refer to a specific downloaded
     // file, create a dummy file in the directory and open it.
-    const dummyFile = `${response.rootDir}/empty`;
-    const blob = new Blob([], { type: "text/plain" })
+    let url = "";
+    if (VENDOR === 'firefox') {
+        const blob = new Blob([], { type: "text/plain" })
+        url = URL.createObjectURL(blob);
+    } else {
+        url = 'data:text/plain,dummy';
+    }
+    const dummyFile = `${response.rootDir}/dummy`;
+    console.debug(`Creating dummy file ${dummyFile}`);
     const downloadId = await browser.downloads.download({
-        url: URL.createObjectURL(blob),
+        url,
         filename: dummyFile,
         conflictAction: 'overwrite',
         saveAs: false,
     });
+    // Wait for the download to complete
+    if (VENDOR !== 'firefox') {
+        await waitForDownload(downloadId);
+    }
     console.debug(`Opening folder ${response.rootDir}`);
     await browser.downloads.show(downloadId);
     await browser.downloads.erase({ id: downloadId });

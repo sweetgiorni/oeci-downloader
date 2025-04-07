@@ -11,9 +11,6 @@
 			"strict_min_version": "109.0"
 		}
 	},
-	"icons": {
-		"128": "icon.png"
-	},
 	"permissions": [
 		"storage",
 		"downloads"
@@ -38,10 +35,8 @@
 	],
 	"background": {
 		"service_worker": "background.js",
-		"type": "module",
-		"scripts": [
-			"background.js"
-		]
+		"type": "module"
+		
 	},
 	"content_security_policy": {
 		"extension_pages": "script-src 'self'; object-src 'self'; default-src 'self' publicaccess.courts.oregon.gov localhost:* ws://localhost:*;"
