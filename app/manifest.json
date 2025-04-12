@@ -39,5 +39,10 @@
 	},
 	"content_security_policy": {
 		"extension_pages": "script-src 'self'; object-src 'self'; default-src 'self' publicaccess.courts.oregon.gov localhost:* ws://localhost:*;"
+	},
+	"icons": {
+		"32": "icon-32.png",
+		"64": "icon-64.png",
+		"128": "icon-128.png"
 	}
 }
