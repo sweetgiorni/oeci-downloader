@@ -1,6 +1,6 @@
 {
 	"name": "OECI Downloader",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "Download Oregon court documents",
 	"homepage_url": "https://github.com/sweetgiorni/oeci-downloader",
 	"manifest_version": 3,
