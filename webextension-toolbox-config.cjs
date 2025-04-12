@@ -2,6 +2,7 @@ const ProvidePlugin = require("webpack").ProvidePlugin
 const DefinePlugin = require("webpack").DefinePlugin
 const Compilation = require("webpack").Compilation
 const RawSource = require("webpack-sources").RawSource
+const CopyPlugin = require("copy-webpack-plugin");
 
 // A simple plugin to to modify the contents of manifest.json based on the environment
 const pluginName = "WebExtManifestPlugin";
@@ -71,6 +72,14 @@ module.exports = {
         VENDOR: JSON.stringify(vendor),
       }),
     )
+    config.plugins.push(new CopyPlugin({
+      patterns: [
+        { from: "../media/*", to: "[name][ext]" },
+      ],
+      options: {
+        concurrency: 100,
+      },
+    }),)
     return config
   },
 }
