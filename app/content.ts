@@ -126,7 +126,6 @@ async function scrapeAndDownload(): Promise<string> {
 				} as DownloadFileRequest);
 			}
 		}
-		break;
 	}
 	return rootDir;
 }
