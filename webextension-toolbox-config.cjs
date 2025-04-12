@@ -27,7 +27,7 @@ class WebExtManifestPlugin {
           const manifestPath = this.options.manifestPath || "manifest.json"
           const manifest = JSON.parse(assets[manifestPath].source())
 
-          if (this.options.vendor === "chrome") {
+          if (this.options.vendor in ["chrome", "edge"]) {
             manifest.background.service_worker = "background.js"
             // Delete the old background script if it exists
             if (manifest.background.scripts) {
