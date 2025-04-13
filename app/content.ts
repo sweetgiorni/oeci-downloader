@@ -1,10 +1,12 @@
-import { Message, GetCaseDocumentsURLResponse, DownloadFileRequest, Image } from "./common";
+import { CourtDocument, CourtDocumentID, CourtDocumentMap } from "./common";
+import { sendMessage, onMessage } from "./messaging";
+
+const CASE_DOCUMENTS_PATHNAME = "/PublicAccessLogin/CaseDocuments.aspx";
 
 const datePattern = /^(\d\d)\/(\d\d)\/(\d{4})/;
 const dateReplacement = "$3-$1-$2";
 const fileNamePattern = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
 
-let personName: string | null = null;
 
 const getFileMetadata = (url: string): Promise<Response> => {
 	return fetch(url, {
@@ -18,34 +20,15 @@ const getFileMetadata = (url: string): Promise<Response> => {
 	});
 }
 
+
 // Returns the root directory where events are downloaded.
-async function scrapeAndDownload(): Promise<string> {
-	const inTheMatterOfDiv = document.querySelector("body > div:last-of-type");
-	if (!inTheMatterOfDiv) {
-		console.error("Couldn't find button container.");
-		return "";
-	}
-	// Extract the name from the matter of div with a regex
-	const nameMatch = inTheMatterOfDiv.textContent?.match(
-		/In the Matter of:\s+(.+)/
-	);
-	if (!nameMatch) {
-		console.error("Couldn't find name in the matter of div.");
-	} else {
-		personName = nameMatch[1];
-	}
+async function collectDocumentMetadata(): Promise<CourtDocumentMap> {
+	const eventToImageIDs: Map<string, Array<CourtDocumentID>> = new Map<string, Array<CourtDocumentID>>();
+	const courtDocuments = new CourtDocumentMap();
 
-	const eventToImages: Map<string, Array<Image>> = new Map<string, Array<Image>>();
-
-	const caseNoSpan = document.querySelector("div > span");
-	if (!caseNoSpan) {
-		throw "Couldn't find case number span.";
-	}
-	const caseNumber = caseNoSpan.textContent ?? "UnknownCaseNumber";
-	const rootDir = `oeci-cases/${caseNumber}-${personName}`;
 	let lastEventName = "";
 	// This forEach needs to run synchronously because of the use of the lastEventName variable.
-	document.querySelectorAll<HTMLTableRowElement>("table:has(th) tr:has(:not(th)").forEach((v) => {
+	document.querySelectorAll<HTMLTableRowElement>("table:has(th) tr:has(:not(th))").forEach((v) => {
 		const tds = v.querySelectorAll<HTMLTableCellElement>("td");
 		if (!tds || tds.length == 0) {
 			console.log(`tds is empty???`);
@@ -62,35 +45,53 @@ async function scrapeAndDownload(): Promise<string> {
 			lastEventName = "unknown";
 		}
 
-		if (!eventToImages.has(lastEventName)) {
-			eventToImages.set(lastEventName, []);
+		if (!eventToImageIDs.has(lastEventName)) {
+			eventToImageIDs.set(lastEventName, []);
 		}
 		const linkObj = tds[1].querySelector("a");
 		if (!linkObj) {
 			console.log(`Couldn't find link object in tds[1]`);
 			return;
 		}
-		const image: Image = {
+		// Get the DocumentFragmentID query parameter
+		const href = linkObj.getAttribute('href');
+		if (!href) {
+			console.log(`Couldn't find href in link object`);
+			return;
+		}
+		const id = href.match(/DocumentFragmentID=(\d+)/)?.[1];
+		if (!id) {
+			console.log(`Couldn't find DocumentFragmentID in link object`);
+			return;
+		}
+		const courtDocument: CourtDocument = {
+			id: Number(id),
 			event: lastEventName,
-			imageName: linkObj.innerText,
+			label: linkObj.innerText,
+			uniqueLabel: '',
 			url: linkObj.href,
 		};
-		eventToImages.get(lastEventName)!.push(image);
+		eventToImageIDs.get(lastEventName)!.push(courtDocument.id);
+		courtDocuments.set(courtDocument.id, courtDocument);
 	});
 
 	// Now that we have all the images, we can get their content types.
-	for (const [event, images] of eventToImages) {
+	for (const [, imageIDs] of eventToImageIDs) {
 		const seenImageNames = new Set<string>();
-		for (const image of images) {
-			const originalImageName = image.imageName;
-			let uniqueImageName = image.imageName;
+		for (const imageID of imageIDs) {
+			const image = courtDocuments.get(imageID);
+			if (!image) {
+				console.error(`Couldn't find court document with ID ${imageID}`);
+				continue;
+			}
+			const originalImageName = image.label;
+			image.uniqueLabel = image.label;
 			let uniqueSuffix = 1;
-			while (seenImageNames.has(uniqueImageName)) {
-				uniqueImageName = `${originalImageName}-${uniqueSuffix}`;
+			while (seenImageNames.has(image.uniqueLabel)) {
+				image.uniqueLabel = `${originalImageName}-${uniqueSuffix}`;
 				uniqueSuffix += 1;
 			}
-			image.imageName = uniqueImageName;
-			seenImageNames.add(image.imageName);
+			seenImageNames.add(image.uniqueLabel);
 			const metadata = await getFileMetadata(image.url);
 			if (!metadata.ok) {
 				console.error(`Failed to fetch file metadata: ${metadata.statusText}`);
@@ -114,62 +115,70 @@ async function scrapeAndDownload(): Promise<string> {
 				}
 				// If the content type is HTML, 
 				image.fileExtension = fileExtension;
-
-				await browser.runtime.sendMessage({
-					type: 'download-file',
-					personName,
-					caseNumber,
-					event,
-					image,
-					useSubdirectory: images.length > 1,
-					rootDir,
-				} as DownloadFileRequest);
 			}
 		}
 	}
-	return rootDir;
+	return courtDocuments;
 }
 
-const getCaseDocumentsURL = (): string => {
+const getCaseDocumentsUpdateStateURL = (): string | undefined => {
 	const urlEl = document.querySelector(".ssCaseDetailCaseNbr")?.parentElement as HTMLAnchorElement;
 	if (!urlEl) {
 		console.error("Couldn't find case documents link.");
-		return '';
+		return;
 	}
 	const url = urlEl.href;
 	if (!url) {
 		console.error("Couldn't find case documents URL.");
-		return '';
+		return;
 	}
 	return url;
 
 }
 
-// Listen for messages from the background script
-browser.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
-	console.debug(`Received message in content script: ${message.type}`);
-	if (message.type === 'scrape-and-download') {
-		// Make sure we're on the CaseDocuments page
-		if (!document.URL.includes('CaseDocuments.aspx')) {
-			console.error('Not on CaseDocuments page, aborting scrape and download.');
-			sendResponse({ success: false, error: 'Not on CaseDocuments page' });
-			return;
-		}
-		scrapeAndDownload().then((rootDir) => {
-			sendResponse({ success: true, rootDir });
-		}).catch((error) => {
-			console.error('Error scraping and downloading:', error);
-			sendResponse({ success: false, error: error.message });
+onMessage('getCaseDocumentsURL', () => {
+	const url = getCaseDocumentsUpdateStateURL();
+	if (url) {
+		return ({ success: true, url });
+	} else {
+		return ({ success: false });
+	}
+})
+
+
+const assertIsCaseDocumentsPage = () => {
+	if (window.location.pathname !== CASE_DOCUMENTS_PATHNAME) {
+		throw new Error("Not on CaseDocuments page");
+	}
+}
+
+
+const getCaseDocumentsHTML = async (): Promise<string> => {
+	assertIsCaseDocumentsPage();
+	return new XMLSerializer().serializeToString(document.documentElement);
+}
+
+
+
+onMessage('scrapeAndDownload', async () => {
+	try {
+		assertIsCaseDocumentsPage();
+	}
+	catch (e) {
+		console.error(e);
+		return { success: false, error: e };
+	}
+	try {
+		const caseDocumentsPromise = getCaseDocumentsHTML();
+		const caseDocumentMetadataPromise = collectDocumentMetadata();
+		sendMessage('saveCase', {
+			courtDocuments: Array.from((await caseDocumentMetadataPromise).entries()),
+			caseDocumentsHTML: await caseDocumentsPromise,
 		});
-		return true; // Keep the message channel open for sendResponse
+	} catch (error) {
+		console.error('Error getting case details or documents:', error);
+		return { success: false, error };
 	}
-	if (message.type === 'get-case-documents-url') {
-		const url = getCaseDocumentsURL();
-		if (url) {
-			sendResponse({ success: true, url } as GetCaseDocumentsURLResponse);
-		} else {
-			sendResponse({ success: false } as GetCaseDocumentsURLResponse);
-		}
-		return true; // Keep the message channel open for sendResponse
-	}
-});
+
+	return { success: true };
+})

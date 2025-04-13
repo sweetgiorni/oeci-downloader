@@ -1,45 +1,29 @@
 
-export interface Message {
-	type: string;
-}
-
-export interface DownloadFileRequest extends Message {
-	type: 'download-file';
-	personName: string;
-	caseNumber: string;
-	event: string;
-	image: Image;
-	useSubdirectory: boolean;
-	rootDir: string;
-}
-
-export interface ScrapeAndDownloadRequest extends Message {
-	type: 'scrape-and-download';
-}
-
-export interface GetCaseDocumentsURL extends Message {
-	type: 'get-case-documents-url';
-}
-
-export interface GetCaseDocumentsURLResponse extends Message {
-	success: boolean;
-	url?: string;
-}
-
-export interface Image {
+export type CourtDocumentID = number;
+export interface CourtDocument {
+	id: CourtDocumentID;
 	// The name of the event, e.g "12/12/2012 Report - Guardian".
 	// Multiple images can be associated with the same event.
 	event: string;
-	// The image name as shown in the link, e.g. "Report - Guardian"
-	// This is not unique, as multiple images in the same event can have the same name.
-	imageName: string;
-	// The URL of the image.
+	// The label as shown on the website, e.g. "Report - Guardian"
+	// This is not unique, as multiple documents in the same event can have the same name.
+	label: string;
+
+	// The label after it has been made unique.
+	// This is used to avoid overwriting files with the same name.
+	uniqueLabel: string;
+
+	// The URL of the document.
 	url: string;
-	// A reference to the row in the table where the image is located.
-	// Used for download status indication.
-	// row: HTMLTableRowElement;
-	// The blob of the image.
-	// blob?: Blob;
 
 	fileExtension?: string;
 }
+
+export interface ProcessedCourtDocument extends CourtDocument {
+	// The file name as it will be saved on disk.
+	// This is relative to the root of the case directory.
+	relativePath: string;
+}
+
+export const CourtDocumentMap = Map<CourtDocumentID, CourtDocument>;
+export type CourtDocumentMap = Map<CourtDocumentID, CourtDocument>;
