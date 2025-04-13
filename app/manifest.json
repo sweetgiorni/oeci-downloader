@@ -12,10 +12,8 @@
 		}
 	},
 	"permissions": [
-		"downloads"
-	],
-	"host_permissions": [
-		"https://publicaccess.courts.oregon.gov/*"
+		"downloads",
+		"tabs"
 	],
 	"action": {
 		"default_title": "Download case documents"
