@@ -12,24 +12,13 @@
 		}
 	},
 	"permissions": [
-		"downloads",
-		"tabs"
+		"activeTab",
+		"scripting",
+		"downloads"
 	],
 	"action": {
 		"default_title": "Download case documents"
 	},
-	"content_scripts": [
-		{
-			"matches": [
-				"https://*.publicaccess.courts.oregon.gov/*",
-				"https://publicaccess.courts.oregon.gov/*"
-			],
-			"js": [
-				"content.js"
-			],
-			"run_at": "document_end"
-		}
-	],
 	"background": {
 		"service_worker": "background.js",
 		"type": "module"
