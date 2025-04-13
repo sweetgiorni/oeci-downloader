@@ -163,7 +163,7 @@ onMessage('saveCase', async message => {
         browser.downloads.erase({ id: cssDownloadId });
     });
 
-    var downloadId: number;
+    let downloadId: number;
     if (VENDOR === 'firefox') {
         // Firefox doesn't support data URLs in downloads, so we need to use a blob
         const blob = new Blob([caseDocumentsPage.html()], { type: 'text/html;charset=UTF-8' });
@@ -209,6 +209,14 @@ browser.action.onClicked.addListener(async (tab) => {
         return;
     }
 
+    if (tab.url?.includes("publicaccess.courts.oregon.gov")) {
+        // Inject the content script into the tab
+        console.debug('Injecting content script');
+        await browser.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content.js'],
+        });
+    } else return;
     if (tab.url?.includes('CaseDetail.aspx')) {
         console.debug('Navigating to CaseDocuments page');
         // Send an event to the content script to have it navigate to the CaseDocuments page
@@ -234,8 +242,13 @@ browser.action.onClicked.addListener(async (tab) => {
         }
         );
         console.debug('Navigated to CaseDocuments page');
+        // We no longer have access to the active tab; need to let user click again
+        return;
     }
-    if (!tab.url?.includes('CaseDocuments.aspx')) return;
+    if (!tab.url?.includes('CaseDocuments.aspx')) {
+        console.log(`${tab.url} is not a CaseDocuments page, skipping`);
+        return;
+    }
     // If tab isn't set, we can't do anything.
     if (!tab.id) {
         console.error('No tab found');
