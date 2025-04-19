@@ -50,31 +50,32 @@ const getCaseMetadata = (caseDocumentsPage: cheerio.CheerioAPI): {
 } => {
     let personName: string | undefined;
     const $ = caseDocumentsPage;
-    const inTheMatterOfDiv = $("body > div:last-of-type");
-    if (!inTheMatterOfDiv) {
-        console.error("Couldn't find button container.");
-    } else {
-        // Extract the name from the matter of div with a regex
-        const nameMatch = inTheMatterOfDiv.text().match(
+    const bodyDivs = $("body > div");
+    for (let i = 0; i < bodyDivs.length; i++) {
+        const div = $(bodyDivs[i]);
+        const nameMatch = div.text().match(
             /In the Matter of:\s+(.+)/
         );
-        if (!nameMatch) {
-            console.error("Couldn't find name in the matter of div.");
-        } else {
+        if (nameMatch) {
             personName = nameMatch[1];
+            break;
         }
     }
-
-    const caseNoSpan = $("div > span");
-    if (!caseNoSpan) {
-        throw "Couldn't find case number span.";
-    }
-    const caseNumber = caseNoSpan.text() ?? "UnknownCaseNumber";
-    if (!caseNumber) {
-        throw "Couldn't find case number.";
-    }
     if (!personName) {
+        console.error("Couldn't find person name in any div.");
         throw "Couldn't find person name.";
+    }
+
+    let caseNumber = "UnknownCaseNumber";
+    const divSpans = $("div > span");
+    for (let i = 0; i < divSpans.length; i++) {
+        const span = $(divSpans[i]);
+        const caseNoMatch = span.text().match(
+            /Case No:\s+([^\s]+)/
+        );
+        if (caseNoMatch) {
+            caseNumber = caseNoMatch[1];
+        }
     }
     return {
         caseNumber,
