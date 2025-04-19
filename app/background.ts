@@ -292,9 +292,12 @@ browser.action.onClicked.addListener(async (tab) => {
             });
         }
         );
-        console.debug('Navigated to CaseDocuments page');
-        // We no longer have access to the active tab; need to let user click again
-        return;
+        if (!tab.id) {
+            console.error('Failed to navigate to CaseDocuments page, new tab id is undefined');
+            return;
+        }
+        console.debug('Navigated to CaseDocuments page, injecting content script again');
+        await inject(tab.id);
     }
     if (!tab.url?.includes('CaseDocuments.aspx')) {
         console.log(`${tab.url} is not a CaseDocuments page, skipping`);
