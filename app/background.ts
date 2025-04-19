@@ -229,19 +229,19 @@ browser.action.onClicked.addListener(async (tab) => {
             return;
         }
         // Wait for the tab to load
-        tab = await new Promise<browser.tabs.Tab>((resolve) => {
-            const checkTab = (tabId: number, changeInfo: browser.tabs._OnUpdatedChangeInfo, updatedTab: browser.tabs.Tab) => {
-                if (changeInfo.status === 'complete') {
-                    browser.tabs.onUpdated.removeListener(checkTab);
-                    resolve(updatedTab);
-                }
-            };
-            browser.tabs.onUpdated.addListener(checkTab);
+        // tab = await new Promise<browser.tabs.Tab>((resolve) => {
+        //     const checkTab = (tabId: number, changeInfo: browser.tabs._OnUpdatedChangeInfo, updatedTab: browser.tabs.Tab) => {
+        //         if (changeInfo.status === 'complete') {
+        //             browser.tabs.onUpdated.removeListener(checkTab);
+        //             resolve(updatedTab);
+        //         }
+        //     };
+        //     browser.tabs.onUpdated.addListener(checkTab);
             browser.tabs.update(tab.id!, {
                 url: result.url,
             });
-        }
-        );
+        // }
+        // );
         console.debug('Navigated to CaseDocuments page');
         // We no longer have access to the active tab; need to let user click again
         return;
