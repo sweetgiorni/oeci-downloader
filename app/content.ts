@@ -227,6 +227,7 @@ const start = async () => {
 		if (state === 'in_progress') {
 			element.classList.add('in_progress');
 			element.classList.remove('complete', 'interrupted');
+			element.innerHTML = "";
 		} else if (state === 'complete') {
 			element.classList.remove('in_progress');
 			element.classList.add('complete');
