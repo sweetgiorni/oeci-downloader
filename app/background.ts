@@ -71,10 +71,10 @@ const getCaseMetadata = (caseDocumentsPage: cheerio.CheerioAPI): {
     for (let i = 0; i < divSpans.length; i++) {
         const span = $(divSpans[i]);
         const caseNoMatch = span.text().match(
-            /Case No:\s+([^\s]+)/
+            /^P\d+$/
         );
         if (caseNoMatch) {
-            caseNumber = caseNoMatch[1];
+            caseNumber = span.text();
         }
     }
     return {
