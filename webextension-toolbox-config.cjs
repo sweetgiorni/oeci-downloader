@@ -56,6 +56,10 @@ class WebExtManifestPlugin {
 
 module.exports = {
   webpack: (config, { dev, vendor }) => {
+    config.module.rules.push({
+      test: /\.css$/i,
+      use: ["style-loader", "css-loader"],
+    })
     config.plugins.push(
       new ProvidePlugin({
         browser: "webextension-polyfill"

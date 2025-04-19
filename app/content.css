@@ -1,0 +1,17 @@
+.in_progress {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 0.15em solid rgba(0, 0, 0, 0.27);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s ease-in-out infinite;
+  -webkit-animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { -webkit-transform: rotate(360deg); }
+}
+@-webkit-keyframes spin {
+  to { -webkit-transform: rotate(360deg); }
+}

@@ -1,17 +1,22 @@
 import sanitize from 'sanitize-filename';
 import { onMessage, sendMessage } from './messaging';
 import * as cheerio from 'cheerio';
-import { CourtDocument, CourtDocumentMap, ProcessedCourtDocument } from './common';
+import { CourtDocument, CourtDocumentMap, DOWNLOAD_STATUS_CLASS, DownloadState, ProcessedCourtDocument } from './common';
 
 declare const VENDOR: 'firefox' | 'chrome' | 'edge';
 
-const waitForDownload = (downloadId: number) => {
-    return new Promise<boolean>((resolve) => {
+// If erase is true, successful downloads will be erased after completion
+const waitForDownload = (downloadId: number, erase: boolean = true): Promise<DownloadState> => {
+    return new Promise<DownloadState>((resolve) => {
         const onDownloadChanged = (delta: browser.downloads._OnChangedDownloadDelta) => {
-            if (delta.id === downloadId && delta.state && delta.state.current === 'complete') {
+            if (delta.id === downloadId && delta.state && ['complete', 'interrupted'].includes(delta.state.current || '')) {
+                // console.log(`Download ${downloadId} changed state to ${delta.state.current}`);
                 // Remove the listener to avoid memory leaks
                 browser.downloads.onChanged.removeListener(onDownloadChanged);
-                resolve(true);
+                if (erase) {
+                    browser.downloads.erase({ id: downloadId });
+                }
+                resolve(delta.state.current as DownloadState);
             }
         };
         browser.downloads.onChanged.addListener(onDownloadChanged);
@@ -31,9 +36,9 @@ const getRelativePath = (doc: CourtDocument): ProcessedCourtDocument => {
     };
 }
 
-const saveCourtDocument = async (doc: ProcessedCourtDocument, rootDir: string) => {
+const saveCourtDocument = async (doc: ProcessedCourtDocument, rootDir: string): Promise<DownloadState> => {
     const filename = `${rootDir}/${doc.relativePath}`;
-    console.log(`Downloading ${doc.url} to ${filename}`);
+    // console.log(`Downloading ${doc.url} to ${filename}`);
 
     const downloadID = await browser.downloads.download({
         url: doc.url,
@@ -41,7 +46,7 @@ const saveCourtDocument = async (doc: ProcessedCourtDocument, rootDir: string) =
         conflictAction: 'overwrite',
         saveAs: false,
     })
-    await waitForDownload(downloadID);
+    return await waitForDownload(downloadID)
 }
 
 const getCaseMetadata = (caseDocumentsPage: cheerio.CheerioAPI): {
@@ -85,6 +90,11 @@ const getCaseMetadata = (caseDocumentsPage: cheerio.CheerioAPI): {
 
 
 onMessage('saveCase', async message => {
+    const tabId = message.sender.tab?.id;
+    if (!tabId) {
+        console.error('Received saveCase message without a tab ID in the sender');
+        return;
+    }
     console.debug('Handling save case details message');
 
     const caseDocumentsPage = cheerio.load(message.data.caseDocumentsHTML);
@@ -93,11 +103,11 @@ onMessage('saveCase', async message => {
     const { caseNumber, personName } = getCaseMetadata(caseDocumentsPage);
     const rootDir = `oeci-cases/${caseNumber}-${personName}`;
 
-    console.log(`Court docs in background script:`);
-    console.log(courtDocuments)
     const processedCourtDocs: Map<number, ProcessedCourtDocument> = new Map<number, ProcessedCourtDocument>();
+    // Remove the download status column that may have been added by the content script
+    caseDocumentsPage(`.${DOWNLOAD_STATUS_CLASS}`).remove();
     caseDocumentsPage("table:has(th) tr:has(:not(th))").each((i, v) => {
-        const tds = caseDocumentsPage("td", v);
+        const tds = caseDocumentsPage(`td`, v);
         if (!tds || tds.length == 0) {
             console.log(`tds is empty???`);
             return true;
@@ -141,66 +151,98 @@ onMessage('saveCase', async message => {
     });
 
     // Start the image downloads
-    const downloadPromises = [];
+    const downloadPromises: Promise<void>[] = [];
     for (const [, doc] of processedCourtDocs) {
         downloadPromises.push(
-            saveCourtDocument(doc, rootDir)
+            (async () => {
+                const state = await saveCourtDocument(doc, rootDir)
+                sendMessage('courtDocumentDownloadUpdated', {
+                    id: doc.id,
+                    state,
+                }, {
+                    tabId,
+                });
+            })()
         );
     }
 
     console.log('Processed court documents:');
     console.log(processedCourtDocs)
     // Download the case details HTML file
-    const filename = `${rootDir}/CaseDocuments.html`;
-    console.log(`Saving case details to ${filename}`);
+    const documentIndexFileName = `${rootDir}/${sanitize(`${caseNumber}-${personName}`)}.html`;
+    console.log(`Saving document index to ${documentIndexFileName}`);
     const cssDownloadId = await browser.downloads.download({
         url: "https://publicaccess.courts.oregon.gov/PublicAccessLogin/CSS/PublicAccess.css",
         filename: `${rootDir}/CSS/PublicAccess.css`,
         conflictAction: 'overwrite',
         saveAs: false,
     })
-    waitForDownload(cssDownloadId).then(() => {
-        console.debug(`Download complete: ${cssDownloadId}`);
-        browser.downloads.erase({ id: cssDownloadId });
-    });
+    waitForDownload(cssDownloadId);
 
-    let downloadId: number;
+    let documentIndexDownloadId: number;
     if (VENDOR === 'firefox') {
         // Firefox doesn't support data URLs in downloads, so we need to use a blob
         const blob = new Blob([caseDocumentsPage.html()], { type: 'text/html;charset=UTF-8' });
         const url = URL.createObjectURL(blob);
-        downloadId = await browser.downloads.download({
+        documentIndexDownloadId = await browser.downloads.download({
             url: url,
-            filename: filename,
+            filename: documentIndexFileName,
             conflictAction: 'overwrite',
             saveAs: false,
         });
     } else {
-        downloadId = await browser.downloads.download({
+        documentIndexDownloadId = await browser.downloads.download({
             url: 'data:text/html;charset=UTF-8,' + encodeURIComponent(caseDocumentsPage.html()),
-            filename: filename,
+            filename: documentIndexFileName,
             conflictAction: 'overwrite',
             saveAs: false,
         });
     }
-    if (!downloadId) {
+    if (!documentIndexDownloadId) {
         console.error('Failed to download case details HTML file');
         return;
     }
     // Wait for the download to complete
-    if (VENDOR !== 'firefox') {
-        await waitForDownload(downloadId);
-    }
+    (async () => {
+        // if (VENDOR !== 'firefox') {
+        await waitForDownload(documentIndexDownloadId);
+        // }
+        console.debug(`Opening folder ${rootDir}`);
+        await browser.downloads.show(documentIndexDownloadId);
+    })();
     console.log('Waiting for image downloads to complete');
     try {
         await Promise.allSettled(downloadPromises);
     } catch (e) {
         console.error('Error downloading images:', e);
     }
-    console.debug(`Opening folder ${rootDir}`);
-    await browser.downloads.show(downloadId);
-    await browser.downloads.erase({ id: downloadId });
 })
+
+const isContentScriptInjected = async (tabId: number): Promise<boolean> => {
+    const [result] = await browser.scripting.executeScript({
+        target: { tabId },
+        func: (() => {
+            return window.oeciDownloaderInjected === true;
+        }) as () => void,
+    });
+    if (result.error) {
+        console.error('Error checking if content script is injected:', result.error);
+        return false;
+    }
+    return result.result;
+}
+
+const inject = async (tabId: number) => {
+    if (await isContentScriptInjected(tabId)) {
+        console.debug('Content script already injected, skipping');
+        return;
+    }
+    await browser.scripting.executeScript({
+        target: { tabId },
+        injectImmediately: true,
+        files: ['content.js'],
+    });
+}
 
 browser.action.onClicked.addListener(async (tab) => {
     // Make sure we're on the CaseDocuments page
@@ -212,11 +254,7 @@ browser.action.onClicked.addListener(async (tab) => {
 
     if (tab.url?.includes("publicaccess.courts.oregon.gov")) {
         // Inject the content script into the tab
-        console.debug('Injecting content script');
-        await browser.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ['content.js'],
-        });
+        await inject(tab.id);
     } else return;
     if (tab.url?.includes('CaseDetail.aspx')) {
         console.debug('Navigating to CaseDocuments page');
@@ -229,19 +267,19 @@ browser.action.onClicked.addListener(async (tab) => {
             return;
         }
         // Wait for the tab to load
-        // tab = await new Promise<browser.tabs.Tab>((resolve) => {
-        //     const checkTab = (tabId: number, changeInfo: browser.tabs._OnUpdatedChangeInfo, updatedTab: browser.tabs.Tab) => {
-        //         if (changeInfo.status === 'complete') {
-        //             browser.tabs.onUpdated.removeListener(checkTab);
-        //             resolve(updatedTab);
-        //         }
-        //     };
-        //     browser.tabs.onUpdated.addListener(checkTab);
+        tab = await new Promise<browser.tabs.Tab>((resolve) => {
+            const checkTab = (tabId: number, changeInfo: browser.tabs._OnUpdatedChangeInfo, updatedTab: browser.tabs.Tab) => {
+                if (changeInfo.status === 'complete') {
+                    browser.tabs.onUpdated.removeListener(checkTab);
+                    resolve(updatedTab);
+                }
+            };
+            browser.tabs.onUpdated.addListener(checkTab);
             browser.tabs.update(tab.id!, {
                 url: result.url,
             });
-        // }
-        // );
+        }
+        );
         console.debug('Navigated to CaseDocuments page');
         // We no longer have access to the active tab; need to let user click again
         return;

@@ -1,4 +1,4 @@
-import { CourtDocument } from './common';
+import { CourtDocument, CourtDocumentID, DownloadState } from './common';
 
 import { defineExtensionMessaging } from '@webext-core/messaging';
 
@@ -31,6 +31,13 @@ interface ProtocolMap {
         caseDocumentsHTML: string;
         courtDocuments: [number, CourtDocument][];
     }): void;
+
+    courtDocumentDownloadUpdated(req: {
+        id: CourtDocumentID;
+        state: DownloadState;
+    }): void;
 }
 
-export const { sendMessage, onMessage } = defineExtensionMessaging<ProtocolMap>();
+export const { sendMessage, onMessage, removeAllListeners } = defineExtensionMessaging<ProtocolMap>({
+    // logger: console,
+});

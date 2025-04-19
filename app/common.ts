@@ -1,3 +1,6 @@
+export const DOWNLOAD_STATUS_CLASS = "downloadStatus";
+
+export type DownloadState = 'complete' | 'interrupted' | 'in_progress';
 
 export type CourtDocumentID = number;
 export interface CourtDocument {
