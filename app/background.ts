@@ -1,19 +1,19 @@
 import sanitize from 'sanitize-filename';
 import { onMessage, sendMessage } from './messaging';
 import * as cheerio from 'cheerio';
-import { CourtDocument, CourtDocumentMap, DOWNLOAD_STATUS_CLASS, DownloadState, ProcessedCourtDocument } from './common';
+import { CourtDocument, CourtDocumentID, CourtDocumentMap, datePattern, dateReplacement, DOWNLOAD_STATUS_CLASS, DownloadState, ProcessedCourtDocument } from './common';
 
 declare const VENDOR: 'firefox' | 'chrome' | 'edge';
 
 // If erase is true, successful downloads will be erased after completion
 const waitForDownload = (downloadId: number, erase: boolean = true): Promise<DownloadState> => {
-    return new Promise<DownloadState>((resolve) => {
+    return new Promise<DownloadState>(function (resolve) {
         const onDownloadChanged = (delta: browser.downloads._OnChangedDownloadDelta) => {
             if (delta.id === downloadId && delta.state && ['complete', 'interrupted'].includes(delta.state.current || '')) {
                 // console.log(`Download ${downloadId} changed state to ${delta.state.current}`);
                 // Remove the listener to avoid memory leaks
                 browser.downloads.onChanged.removeListener(onDownloadChanged);
-                if (erase) {
+                if (erase && delta.state.current === 'complete') {
                     browser.downloads.erase({ id: downloadId });
                 }
                 resolve(delta.state.current as DownloadState);
@@ -27,7 +27,7 @@ const waitForDownload = (downloadId: number, erase: boolean = true): Promise<Dow
 const getRelativePath = (doc: CourtDocument): ProcessedCourtDocument => {
     // First use the sanitize lib to sanitize the names,
     // then replace all whitespace with a single dash, then compact any repeating dashes.
-    const sanitizedEvent = sanitize(doc.event).replace(/\s+/g, '-').replace(/-+/g, '-');
+    const sanitizedEvent = sanitize(doc.id.event).replace(/\s+/g, '-').replace(/-+/g, '-');
     const sanitizedImageName = sanitize(doc.uniqueLabel).replace(/\s+/g, '-').replace(/-+/g, '-');
     const relativePath = `${sanitizedEvent}/${sanitizedImageName}${doc.fileExtension ? `.${doc.fileExtension}` : ''}`;
     return {
@@ -103,9 +103,10 @@ onMessage('saveCase', async message => {
     const { caseNumber, personName } = getCaseMetadata(caseDocumentsPage);
     const rootDir = `oeci-cases/${caseNumber}-${personName}`;
 
-    const processedCourtDocs: Map<number, ProcessedCourtDocument> = new Map<number, ProcessedCourtDocument>();
+    const processedCourtDocs = new Map<CourtDocumentID, ProcessedCourtDocument>();
     // Remove the download status column that may have been added by the content script
     caseDocumentsPage(`.${DOWNLOAD_STATUS_CLASS}`).remove();
+    let lastEventName = "";
     caseDocumentsPage("table:has(th) tr:has(:not(th))").each((i, v) => {
         const tds = caseDocumentsPage(`td`, v);
         if (!tds || tds.length == 0) {
@@ -115,6 +116,13 @@ onMessage('saveCase', async message => {
         if (tds.length !== 3) {
             console.debug(`Found an unexpected number of tds: ${tds.length}, skipping row.`);
             return true;
+        }
+        const event = caseDocumentsPage(tds[0]).text();
+        if (event) {
+            lastEventName = event.replace(datePattern, dateReplacement);
+        }
+        if (!lastEventName) {
+            lastEventName = "unknown";
         }
         const linkObj = caseDocumentsPage("a", tds[1]);
         if (!linkObj) {
@@ -127,15 +135,15 @@ onMessage('saveCase', async message => {
             console.log(`Couldn't find href in link object`);
             return true;
         }
-        const id = href.match(/DocumentFragmentID=(\d+)/)?.[1];
-        if (!id) {
+        const fragmentID = href.match(/DocumentFragmentID=(\d+)/)?.[1];
+        if (!fragmentID) {
             console.log(`Couldn't find DocumentFragmentID in link object`);
             return true;
         }
         // Lookup the court document in the map
-        const courtDocument = courtDocuments.get(Number(id));
+        const courtDocument = courtDocuments.get({ fragmentID: Number(fragmentID), event: lastEventName });
         if (!courtDocument) {
-            console.error(`Couldn't find court document with ID ${id}`);
+            console.error(`Couldn't find court document with ID ${fragmentID} and event ${lastEventName}`);
             return true;
         }
 
@@ -166,8 +174,6 @@ onMessage('saveCase', async message => {
         );
     }
 
-    console.log('Processed court documents:');
-    console.log(processedCourtDocs)
     // Download the case details HTML file
     const documentIndexFileName = `${rootDir}/${sanitize(`${caseNumber}-${personName}`)}.html`;
     console.log(`Saving document index to ${documentIndexFileName}`);
@@ -177,7 +183,7 @@ onMessage('saveCase', async message => {
         conflictAction: 'overwrite',
         saveAs: false,
     })
-    waitForDownload(cssDownloadId);
+    await waitForDownload(cssDownloadId);
 
     let documentIndexDownloadId: number;
     if (VENDOR === 'firefox') {
@@ -203,12 +209,18 @@ onMessage('saveCase', async message => {
         return;
     }
     // Wait for the download to complete
-    (async () => {
+    (async function () {
         // if (VENDOR !== 'firefox') {
-        await waitForDownload(documentIndexDownloadId);
+        // Don't erase it because we need to show it first
+        await waitForDownload(documentIndexDownloadId, false);
         // }
         console.debug(`Opening folder ${rootDir}`);
-        await browser.downloads.show(documentIndexDownloadId);
+        try {
+            await browser.downloads.show(documentIndexDownloadId);
+            await browser.downloads.erase({ id: documentIndexDownloadId });
+        } catch (e) {
+            console.error(`Failed to erase download ${documentIndexDownloadId}: ${e}`);
+        }
     })();
     console.log('Waiting for image downloads to complete');
     try {
@@ -245,13 +257,13 @@ const inject = async (tabId: number) => {
 }
 
 browser.action.onClicked.addListener(async (tab) => {
-    // Make sure we're on the CaseDocuments page
     // If the tab is not set, we can't do anything.
     if (!tab.id) {
         console.error('No tab found');
         return;
     }
 
+    // Make sure we're on the CaseDocuments page
     if (tab.url?.includes("publicaccess.courts.oregon.gov")) {
         // Inject the content script into the tab
         await inject(tab.id);

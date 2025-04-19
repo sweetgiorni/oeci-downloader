@@ -1,4 +1,4 @@
-import { CourtDocument, CourtDocumentID, DownloadState } from './common';
+import { CourtDocument, DownloadState, CourtDocumentID } from './common';
 
 import { defineExtensionMessaging } from '@webext-core/messaging';
 
@@ -29,7 +29,7 @@ interface ProtocolMap {
 
     saveCase(req: {
         caseDocumentsHTML: string;
-        courtDocuments: [number, CourtDocument][];
+        courtDocuments: [CourtDocumentID, CourtDocument][];
     }): void;
 
     courtDocumentDownloadUpdated(req: {

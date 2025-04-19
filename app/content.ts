@@ -1,4 +1,4 @@
-import { CourtDocument, CourtDocumentID, CourtDocumentMap, DOWNLOAD_STATUS_CLASS, DownloadState } from "./common";
+import { CourtDocument, FragmentID, CourtDocumentMap, DOWNLOAD_STATUS_CLASS, DownloadState, CourtDocumentID, datePattern, dateReplacement } from "./common";
 import { sendMessage, onMessage } from "./messaging";
 import "./content.css"
 
@@ -9,14 +9,11 @@ declare global {
 	}
 }
 const start = async () => {
-	console.log("Inside content script");
 	const CASE_DOCUMENTS_PATHNAME = "/publicaccesslogin/casedocuments.aspx";
 
-	const datePattern = /^(\d\d)\/(\d\d)\/(\d{4})/;
-	const dateReplacement = "$3-$1-$2";
 	const fileNamePattern = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
 
-	const courtDocumentToElement = new Map<CourtDocumentID, HTMLTableCellElement>();
+	const courtDocumentToElement = new CourtDocumentMap<HTMLTableCellElement>();
 
 
 	// by a previously injected script
@@ -42,12 +39,14 @@ const start = async () => {
 
 
 	// Returns the root directory where events are downloaded.
-	async function collectDocumentMetadata(): Promise<CourtDocumentMap> {
-		const eventToCourtDocumentIDs: Map<string, Array<CourtDocumentID>> = new Map<string, Array<CourtDocumentID>>();
-		const courtDocuments = new CourtDocumentMap();
+	async function collectDocumentMetadata(): Promise<CourtDocumentMap<CourtDocument>> {
+		const eventToFragmentIDs: Map<string, Array<FragmentID>> = new Map<string, Array<FragmentID>>();
+		const courtDocuments = new CourtDocumentMap<CourtDocument>();
 
 		let lastEventName = "";
+		// const limit = 5;
 		document.querySelectorAll<HTMLTableRowElement>("table:has(th) tr:has(:not(th))").forEach((v) => {
+			// if (courtDocuments.size >= limit) { return };
 			const tds = v.querySelectorAll<HTMLTableCellElement>(`td:not(.${DOWNLOAD_STATUS_CLASS})`);
 			if (!tds || tds.length == 0) {
 				console.log(`tds is empty???`);
@@ -65,8 +64,8 @@ const start = async () => {
 				lastEventName = "unknown";
 			}
 
-			if (!eventToCourtDocumentIDs.has(lastEventName)) {
-				eventToCourtDocumentIDs.set(lastEventName, []);
+			if (!eventToFragmentIDs.has(lastEventName)) {
+				eventToFragmentIDs.set(lastEventName, []);
 			}
 			const linkObj = tds[1].querySelector("a");
 			if (!linkObj) {
@@ -79,8 +78,8 @@ const start = async () => {
 				console.log(`Couldn't find href in link object`);
 				return;
 			}
-			const id = href.match(/DocumentFragmentID=(\d+)/)?.[1];
-			if (!id) {
+			const documentFragmentId = href.match(/DocumentFragmentID=(\d+)/)?.[1];
+			if (!documentFragmentId) {
 				console.log(`Couldn't find DocumentFragmentID in link object`);
 				return;
 			}
@@ -90,29 +89,28 @@ const start = async () => {
 				const downloadStatusTd = document.createElement('td');
 				downloadStatusTd.classList.add(DOWNLOAD_STATUS_CLASS);
 				v.appendChild(downloadStatusTd);
-				courtDocumentToElement.set(Number(id), downloadStatusTd);
+				courtDocumentToElement.set({ fragmentID: Number(documentFragmentId), event: lastEventName }, downloadStatusTd);
 			} else {
-				courtDocumentToElement.set(Number(id), downloadStatusTd);
+				courtDocumentToElement.set({ fragmentID: Number(documentFragmentId), event: lastEventName }, downloadStatusTd);
 			}
 			const courtDocument: CourtDocument = {
-				id: Number(id),
-				event: lastEventName,
+				id: { fragmentID: Number(documentFragmentId), event: lastEventName },
 				label: linkObj.innerText,
 				uniqueLabel: '',
 				url: linkObj.href,
 			};
-			eventToCourtDocumentIDs.get(lastEventName)!.push(courtDocument.id);
+			eventToFragmentIDs.get(lastEventName)!.push(courtDocument.id.fragmentID);
 			courtDocuments.set(courtDocument.id, courtDocument);
 
 		});
 
 		// Now that we have all the images, we can get their content types.
-		for (const [, documentIDs] of eventToCourtDocumentIDs) {
+		for (const [event, fragmentIDs] of eventToFragmentIDs) {
 			const seenDocumentNames = new Set<string>();
-			for (const documentID of documentIDs) {
-				const courtDocument = courtDocuments.get(documentID);
+			for (const fragmentID of fragmentIDs) {
+				const courtDocument = courtDocuments.get({ fragmentID, event });
 				if (!courtDocument) {
-					console.error(`Couldn't find court document with ID ${documentID}`);
+					console.error(`Couldn't find court document with ID ${fragmentID} and event ${event}`);
 					continue;
 				}
 				const originalDocumentName = courtDocument.label;
@@ -123,7 +121,6 @@ const start = async () => {
 					uniqueSuffix += 1;
 				}
 				seenDocumentNames.add(courtDocument.uniqueLabel);
-				console.log(courtDocument.uniqueLabel)
 
 				updateDocumentDownloadState(courtDocument.id, 'in_progress');
 				const metadata = await getFileMetadata(courtDocument.url);
@@ -250,6 +247,6 @@ const start = async () => {
 if (window.oeciDownloaderInjected === true) {
 	console.log("Already injected, skipping.");
 } else {
-window.oeciDownloaderInjected = true;
-start();
+	window.oeciDownloaderInjected = true;
+	start();
 }
