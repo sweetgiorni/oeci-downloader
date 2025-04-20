@@ -16,15 +16,6 @@ const start = async () => {
 	const courtDocumentToElement = new CourtDocumentMap<HTMLTableCellElement>();
 
 
-	// by a previously injected script
-	// const extensionId = window.__extensionId;
-
-	// if (!extensionId) {
-	// 	console.error("Couldn't find extension ID");
-	// 	throw new Error("Couldn't find extension ID");
-	// }
-
-
 	const getFileMetadata = (url: string): Promise<Response> => {
 		return fetch(url, {
 			method: 'HEAD',
@@ -33,9 +24,24 @@ const start = async () => {
 				'Accept-Encoding': 'gzip, deflate, br, zstd',
 				'Cache-Control': 'no-cache',
 				'Pragma': 'no-cache'
-			}
+			},
 		});
 	}
+
+	// function scrapeCaseNumber(): string {
+	// 	let caseNumber: string = "UnknownCaseNumber";
+	// 	const divSpans = document.querySelectorAll("div > span");
+	// 	for (let i = 0; i < divSpans.length; i++) {
+	// 		const span = divSpans[i];
+	// 		const caseNoMatch = span.textContent?.match(
+	// 			/^P\d+$/
+	// 		);
+	// 		if (caseNoMatch && span.textContent) {
+	// 			caseNumber = span.textContent;
+	// 		}
+	// 	}
+	// 	return caseNumber;
+	// }
 
 
 	// Returns the root directory where events are downloaded.
@@ -123,15 +129,44 @@ const start = async () => {
 				seenDocumentNames.add(courtDocument.uniqueLabel);
 
 				updateDocumentDownloadState(courtDocument.id, 'in_progress');
-				const metadata = await getFileMetadata(courtDocument.url);
-				if (!metadata.ok) {
-					console.error(`Failed to fetch file metadata: ${metadata.statusText}`);
+				let metadata: Response | undefined
+				try {
+					metadata = await getFileMetadata(courtDocument.url);
+					if (!metadata.ok) {
+						console.error(`Failed to fetch file metadata: ${metadata.statusText}`);
+						updateDocumentDownloadState(courtDocument.id, 'interrupted');
+						courtDocuments.delete(courtDocument.id);
+						continue;
+					}
+				} catch (error) {
+					console.error(`Error fetching file metadata`);
+					console.error(error);
+					updateDocumentDownloadState(courtDocument.id, 'interrupted');
+					courtDocuments.delete(courtDocument.id);
 					continue;
 				}
-				// if staus is 302 found and content type is HTML, then most likely
-				// the user doesn't have access to the image.
-				if (metadata.status === 302 && metadata.headers.get('Content-Type')?.includes('text/html')) {
-					console.warn(`User doesn't have access to the image: ${courtDocument.url}`);
+				if (metadata.headers.get('Content-Type')?.includes('text/html')) {
+					if (metadata.redirected && metadata.url.toLowerCase().includes('erroroccured.aspx')) {
+						window.location.href = '/PublicAccessLogin/Login.aspx'
+						throw new Error("Was redirected to the 'error returned' page; redirecting to login.");
+					}
+					// Expired session?
+					if (metadata.url.toLowerCase().includes('/publicaccesslogin/login.aspx')) {
+						// Immediately redirect to the login page.
+						window.location.href = '/PublicAccessLogin/Login.aspx'
+						throw new Error("Session expired, redirecting to login page.");
+					}
+					// Most likely the user doesn't have access to the image.
+					console.warn(`User probably doesn't have access to the image: ${courtDocument.url} for ${event} - ${courtDocument.label}`);
+					updateDocumentDownloadState(courtDocument.id, 'interrupted');
+					courtDocuments.delete(courtDocument.id);
+					continue;
+				}
+				if (!metadata.ok) {
+					console.error(`Failed to fetch file metadata due to unknown error`);
+					console.error(metadata);
+					updateDocumentDownloadState(courtDocument.id, 'interrupted');
+					courtDocuments.delete(courtDocument.id);
 					continue;
 				}
 				let fileExtension = "";
